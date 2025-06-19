@@ -7,12 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Search, Filter, Check, X, Eye } from 'lucide-react';
 import { mockLeaveRequests, leaveTypeLabels, statusLabels, departmentOptions } from '@/utils/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/hooks/use-toast';
 
 export function RequestsList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [requests, setRequests] = useState(mockLeaveRequests);
+  const { user } = useAuth();
+
+  // Only admins can see this component, but double-check for actions
+  const isAdmin = user?.role === 'admin';
 
   const filteredRequests = requests.filter(request => {
     const matchesSearch = request.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -25,16 +31,59 @@ export function RequestsList() {
     return matchesSearch && matchesStatus && matchesDepartment;
   });
 
+  const createNotificationForEmployee = (employeeName: string, status: string, requestType: string) => {
+    const isApproved = status === 'approved';
+    const notificationTitle = isApproved ? 'Demande approuvée' : 'Demande refusée';
+    const notificationMessage = isApproved 
+      ? `Votre demande de ${leaveTypeLabels[requestType as keyof typeof leaveTypeLabels]} a été approuvée par l'administration.`
+      : `Votre demande de ${leaveTypeLabels[requestType as keyof typeof leaveTypeLabels]} a été refusée par l'administration.`;
+    
+    // Show toast notification to admin confirming the action
+    toast({
+      title: "Action effectuée",
+      description: `${employeeName} sera notifié(e) de la décision.`,
+      variant: isApproved ? "default" : "destructive",
+    });
+  };
+
   const handleApprove = (requestId: string) => {
+    if (!isAdmin) {
+      toast({
+        title: "Accès refusé",
+        description: "Seuls les administrateurs peuvent approuver les demandes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const request = requests.find(req => req.id === requestId);
+    if (!request) return;
+
     setRequests(prev => prev.map(req => 
-      req.id === requestId ? { ...req, status: 'approved' as const, approvedBy: 'Manager' } : req
+      req.id === requestId ? { ...req, status: 'approved' as const, approvedBy: user.name } : req
     ));
+
+    createNotificationForEmployee(request.employee.name, 'approved', request.type);
   };
 
   const handleReject = (requestId: string) => {
+    if (!isAdmin) {
+      toast({
+        title: "Accès refusé",
+        description: "Seuls les administrateurs peuvent refuser les demandes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const request = requests.find(req => req.id === requestId);
+    if (!request) return;
+
     setRequests(prev => prev.map(req => 
       req.id === requestId ? { ...req, status: 'rejected' as const } : req
     ));
+
+    createNotificationForEmployee(request.employee.name, 'rejected', request.type);
   };
 
   const getStatusBadge = (status: string) => {
@@ -57,6 +106,17 @@ export function RequestsList() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return diffDays;
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-2">Accès refusé</h1>
+          <p className="text-gray-600">Seuls les administrateurs peuvent gérer les demandes.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -165,13 +225,14 @@ export function RequestsList() {
                     </td>
                     <td className="p-3">
                       <div className="flex gap-2">
-                        {request.status === 'pending' && (
+                        {request.status === 'pending' && isAdmin && (
                           <>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleApprove(request.id)}
                               className="text-green-600 border-green-300 hover:bg-green-50"
+                              title="Approuver la demande"
                             >
                               <Check size={14} />
                             </Button>
@@ -180,12 +241,13 @@ export function RequestsList() {
                               variant="outline"
                               onClick={() => handleReject(request.id)}
                               className="text-red-600 border-red-300 hover:bg-red-50"
+                              title="Refuser la demande"
                             >
                               <X size={14} />
                             </Button>
                           </>
                         )}
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" title="Voir les détails">
                           <Eye size={14} />
                         </Button>
                       </div>
