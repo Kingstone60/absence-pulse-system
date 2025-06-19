@@ -7,9 +7,11 @@ import { RequestForm } from '@/components/RequestForm';
 import { RequestsList } from '@/components/RequestsList';
 import { AbsenceTable } from '@/components/AbsenceTable';
 import { Notifications } from '@/components/Notifications';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const { user } = useAuth();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -18,13 +20,17 @@ const Index = () => {
       case 'calendar':
         return <LeaveCalendar />;
       case 'requests':
-        return <RequestsList />;
+        // Only admins can see all requests
+        return user?.role === 'admin' ? <RequestsList /> : <Dashboard />;
       case 'absences':
         return <AbsenceTable />;
       case 'notifications':
         return <Notifications />;
       case 'new-request':
         return <RequestForm />;
+      case 'settings':
+        // Only admins can access settings
+        return user?.role === 'admin' ? <div>Paramètres (à implémenter)</div> : <Dashboard />;
       default:
         return <Dashboard />;
     }
@@ -59,7 +65,7 @@ const Index = () => {
                 </button>
               </div>
               <div className="text-sm text-gray-500">
-                Bienvenue dans votre espace de gestion des congés
+                Bienvenue {user?.name} - {user?.role === 'admin' ? 'Administrateur' : 'Employé'}
               </div>
             </div>
           </div>

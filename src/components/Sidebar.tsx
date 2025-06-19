@@ -1,7 +1,9 @@
 
 import { useState } from 'react';
-import { Calendar, Users, FileText, Bell, BarChart3, Settings, Menu, X } from 'lucide-react';
+import { Calendar, Users, FileText, Bell, BarChart3, Settings, Menu, X, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 
 interface SidebarProps {
   activeTab: string;
@@ -19,6 +21,11 @@ const menuItems = [
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
     <div className={cn(
@@ -47,6 +54,11 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
         <ul className="space-y-2">
           {menuItems.map((item) => {
             const IconComponent = item.icon;
+            // Hide admin-only features for employees
+            if (user?.role === 'employee' && (item.id === 'requests' || item.id === 'settings')) {
+              return null;
+            }
+            
             return (
               <li key={item.id}>
                 <button
@@ -69,17 +81,32 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
       {/* User Profile */}
       <div className="p-4 border-t border-slate-700">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-3">
           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium">M</span>
+            <span className="text-sm font-medium">
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+            </span>
           </div>
           {!isCollapsed && (
-            <div>
-              <p className="text-sm font-medium">Manager</p>
-              <p className="text-xs text-slate-400">marie@entreprise.fr</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{user?.name}</p>
+              <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+              <p className="text-xs text-blue-400 capitalize">{user?.role}</p>
             </div>
           )}
         </div>
+        
+        {!isCollapsed && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="w-full text-slate-300 border-slate-600 hover:bg-slate-700"
+          >
+            <LogOut size={16} className="mr-2" />
+            Déconnexion
+          </Button>
+        )}
       </div>
     </div>
   );
