@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Calendar, Users, FileText, Bell, BarChart3, Settings, Menu, X, LogOut } from 'lucide-react';
+import { Calendar, Users, FileText, Bell, BarChart3, Settings, Menu, X, LogOut, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ const menuItems = [
   { id: 'requests', label: 'Demandes', icon: FileText },
   { id: 'absences', label: 'Absences', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'profile', label: 'Mon Profil', icon: User },
   { id: 'settings', label: 'Paramètres', icon: Settings }
 ];
 

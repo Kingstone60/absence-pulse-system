@@ -7,6 +7,7 @@ import { RequestForm } from '@/components/RequestForm';
 import { RequestsList } from '@/components/RequestsList';
 import { AbsenceTable } from '@/components/AbsenceTable';
 import { Notifications } from '@/components/Notifications';
+import Profile from './Profile';
 import { useAuth } from '@/contexts/AuthContext';
 
 const Index = () => {
@@ -28,6 +29,8 @@ const Index = () => {
         return <Notifications />;
       case 'new-request':
         return <RequestForm />;
+      case 'profile':
+        return <Profile />;
       case 'settings':
         // Only admins can access settings
         return user?.role === 'admin' ? <div>Paramètres (à implémenter)</div> : <Dashboard />;

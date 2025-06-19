@@ -1,5 +1,6 @@
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -152,6 +153,15 @@ const Login = () => {
                 {isLoading ? 'Connexion...' : 'Se connecter'}
               </Button>
             </form>
+
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600">
+                Pas encore de compte ?{' '}
+                <Link to="/register" className="text-blue-600 hover:underline">
+                  Créer un compte employé
+                </Link>
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

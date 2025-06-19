@@ -4,8 +4,8 @@ export interface User {
   email: string;
   name: string;
   role: 'employee' | 'admin';
-  department: string;
   position: string;
+  department: string;
   avatar?: string;
 }
 
@@ -19,4 +19,12 @@ export interface LoginCredentials {
   email: string;
   password: string;
   role: 'employee' | 'admin';
+}
+
+export interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+  position: string;
+  department: string;
 }
