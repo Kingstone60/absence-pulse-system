@@ -1,182 +1,266 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { User, Edit } from 'lucide-react';
+import { User, Edit3, Save, X } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { AvatarUpload } from '@/components/AvatarUpload';
 
-const departments = [
-  'Développement',
-  'Marketing',
-  'RH',
-  'Finance',
-  'Commercial',
-  'Support',
-  'Design'
-];
+interface UserProfile {
+  id: string;
+  name: string;
+  position: string;
+  department: string;
+  role: string;
+  avatar_url?: string;
+}
 
 const Profile = () => {
-  const { user, updateProfile } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
-    position: user?.position || '',
-    department: user?.department || ''
+    name: '',
+    position: '',
+    department: ''
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name || !formData.email || !formData.position || !formData.department) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez remplir tous les champs",
-        variant: "destructive"
-      });
-      return;
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
     }
+  }, [user]);
 
-    const success = await updateProfile(formData);
-    
-    if (success) {
-      setIsEditing(false);
-      toast({
-        title: "Profil mis à jour",
-        description: "Vos informations ont été mises à jour avec succès"
+  const fetchProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+
+      setProfile(data);
+      setFormData({
+        name: data.name,
+        position: data.position,
+        department: data.department
       });
-    } else {
+    } catch (error) {
+      console.error('Error fetching profile:', error);
       toast({
         title: "Erreur",
-        description: "Impossible de mettre à jour le profil",
-        variant: "destructive"
+        description: "Impossible de charger le profil.",
+        variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleSave = async () => {
+    if (!user || !profile) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: formData.name,
+          position: formData.position,
+          department: formData.department
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setProfile(prev => prev ? { ...prev, ...formData } : null);
+      setIsEditing(false);
+
+      toast({
+        title: "Profil mis à jour",
+        description: "Vos informations ont été mises à jour avec succès.",
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de mettre à jour le profil.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCancel = () => {
+    if (!profile) return;
+    
     setFormData({
-      name: user?.name || '',
-      email: user?.email || '',
-      position: user?.position || '',
-      department: user?.department || ''
+      name: profile.name,
+      position: profile.position,
+      department: profile.department
     });
     setIsEditing(false);
   };
 
+  const handleAvatarUpdate = (newUrl: string) => {
+    setProfile(prev => prev ? { ...prev, avatar_url: newUrl } : null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-lg">Chargement du profil...</div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-lg text-red-600">Erreur de chargement du profil</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Mon Profil</h1>
-        {!isEditing && (
-          <Button onClick={() => setIsEditing(true)} className="flex items-center gap-2">
-            <Edit size={16} />
-            Modifier
-          </Button>
-        )}
+        <div className="text-sm text-gray-500">
+          {profile.role === 'admin' ? 'Administrateur' : 'Employé'}
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User size={24} />
-            Informations personnelles
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isEditing ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Nom complet</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="position">Poste</Label>
-                <Input
-                  id="position"
-                  type="text"
-                  value={formData.position}
-                  onChange={(e) => handleInputChange('position', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="department">Département</Label>
-                <Select value={formData.department} onValueChange={(value) => handleInputChange('department', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un département" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map(dept => (
-                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <User size={24} />
+              Informations personnelles
+            </CardTitle>
+            {!isEditing ? (
+              <Button variant="outline" onClick={() => setIsEditing(true)}>
+                <Edit3 size={16} className="mr-2" />
+                Modifier
+              </Button>
+            ) : (
               <div className="flex gap-2">
-                <Button type="submit">Sauvegarder</Button>
-                <Button type="button" variant="outline" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel}>
+                  <X size={16} className="mr-2" />
                   Annuler
                 </Button>
+                <Button size="sm" onClick={handleSave}>
+                  <Save size={16} className="mr-2" />
+                  Enregistrer
+                </Button>
               </div>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <Label>Nom complet</Label>
-                <p className="text-lg">{user?.name}</p>
-              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Avatar Upload */}
+          <div className="flex justify-center">
+            <AvatarUpload 
+              currentAvatarUrl={profile.avatar_url}
+              onAvatarUpdate={handleAvatarUpdate}
+              size="lg"
+            />
+          </div>
 
-              <div>
-                <Label>Email</Label>
-                <p className="text-lg">{user?.email}</p>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="name">Nom complet</Label>
+              {isEditing ? (
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
+              ) : (
+                <div className="p-2 bg-gray-50 rounded border">{profile.name}</div>
+              )}
+            </div>
 
-              <div>
-                <Label>Poste</Label>
-                <p className="text-lg">{user?.position}</p>
-              </div>
+            <div>
+              <Label htmlFor="position">Poste</Label>
+              {isEditing ? (
+                <Input
+                  id="position"
+                  value={formData.position}
+                  onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
+                />
+              ) : (
+                <div className="p-2 bg-gray-50 rounded border">{profile.position}</div>
+              )}
+            </div>
 
-              <div>
-                <Label>Département</Label>
-                <p className="text-lg">{user?.department}</p>
-              </div>
+            <div>
+              <Label htmlFor="department">Département</Label>
+              {isEditing ? (
+                <Input
+                  id="department"
+                  value={formData.department}
+                  onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                />
+              ) : (
+                <div className="p-2 bg-gray-50 rounded border">{profile.department}</div>
+              )}
+            </div>
 
-              <div>
-                <Label>Rôle</Label>
-                <p className="text-lg capitalize">{user?.role === 'admin' ? 'Administrateur' : 'Employé'}</p>
+            <div>
+              <Label>Email</Label>
+              <div className="p-2 bg-gray-50 rounded border text-gray-600">{user?.email}</div>
+            </div>
+
+            <div>
+              <Label>Rôle</Label>
+              <div className="p-2 bg-gray-50 rounded border text-gray-600">
+                {profile.role === 'admin' ? 'Administrateur' : 'Employé'}
               </div>
             </div>
-          )}
+
+            <div>
+              <Label>Membre depuis</Label>
+              <div className="p-2 bg-gray-50 rounded border text-gray-600">
+                {new Date(user?.created_at || '').toLocaleDateString('fr-FR')}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Statistics Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Statistiques</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-600">12</div>
+              <div className="text-sm text-gray-500">Demandes total</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">10</div>
+              <div className="text-sm text-gray-500">Approuvées</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-600">1</div>
+              <div className="text-sm text-gray-500">Refusées</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-yellow-600">1</div>
+              <div className="text-sm text-gray-500">En attente</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

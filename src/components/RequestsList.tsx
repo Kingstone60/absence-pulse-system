@@ -1,90 +1,210 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Search, Filter, Check, X, Eye } from 'lucide-react';
-import { mockLeaveRequests, leaveTypeLabels, statusLabels, departmentOptions } from '@/utils/mockData';
+import { Search, Filter, Check, X, Eye, Download } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { DataExport } from './DataExport';
+
+interface LeaveRequest {
+  id: string;
+  user_id: string;
+  type: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
+  admin_comment: string;
+  approved_by: string;
+  created_at: string;
+  profiles: {
+    name: string;
+    position: string;
+    department: string;
+  };
+}
+
+const leaveTypeLabels = {
+  annual: 'Congés annuels',
+  sick: 'Congé maladie',
+  maternity: 'Congé maternité',
+  personal: 'Congé personnel',
+  emergency: 'Congé d\'urgence',
+  unpaid: 'Congé sans solde'
+};
+
+const statusLabels = {
+  pending: 'En attente',
+  approved: 'Approuvé',
+  rejected: 'Refusé',
+  cancelled: 'Annulé'
+};
 
 export function RequestsList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [requests, setRequests] = useState(mockLeaveRequests);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
+  const { toast } = useToast();
 
-  // Only admins can see this component, but double-check for actions
   const isAdmin = user?.role === 'admin';
 
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    fetchRequests();
+
+    // Écouter les mises à jour en temps réel
+    const channel = supabase
+      .channel('leave-requests-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leave_requests'
+        },
+        () => {
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
+  const fetchRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select(`
+          *,
+          profiles:user_id (name, position, department)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setRequests(data || []);
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les demandes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createNotification = async (userId: string, type: string, title: string, message: string) => {
+    try {
+      await supabase.rpc('create_notification', {
+        target_user_id: userId,
+        notification_type: type,
+        notification_title: title,
+        notification_message: message
+      });
+    } catch (error) {
+      console.error('Error creating notification:', error);
+    }
+  };
+
+  const handleApprove = async (requestId: string) => {
+    if (!isAdmin) return;
+
+    try {
+      const request = requests.find(req => req.id === requestId);
+      if (!request) return;
+
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({ 
+          status: 'approved',
+          approved_by: user.id
+        })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      // Créer une notification
+      await createNotification(
+        request.user_id,
+        'approval',
+        'Demande approuvée',
+        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} a été approuvée.`
+      );
+
+      toast({
+        title: "Demande approuvée",
+        description: `La demande de ${request.profiles.name} a été approuvée.`,
+      });
+
+    } catch (error) {
+      console.error('Error approving request:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'approuver la demande.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    if (!isAdmin) return;
+
+    try {
+      const request = requests.find(req => req.id === requestId);
+      if (!request) return;
+
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({ status: 'rejected' })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      // Créer une notification
+      await createNotification(
+        request.user_id,
+        'rejection',
+        'Demande refusée',
+        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} a été refusée.`
+      );
+
+      toast({
+        title: "Demande refusée",
+        description: `La demande de ${request.profiles.name} a été refusée.`,
+      });
+
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de refuser la demande.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredRequests = requests.filter(request => {
-    const matchesSearch = request.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         request.employee.department.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = request.profiles?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         request.profiles?.department?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
     const matchesDepartment = departmentFilter === 'all' || 
-                             departmentFilter === 'Tous les départements' ||
-                             request.employee.department === departmentFilter;
+                             request.profiles?.department === departmentFilter;
     
     return matchesSearch && matchesStatus && matchesDepartment;
   });
-
-  const createNotificationForEmployee = (employeeName: string, status: string, requestType: string) => {
-    const isApproved = status === 'approved';
-    const notificationTitle = isApproved ? 'Demande approuvée' : 'Demande refusée';
-    const notificationMessage = isApproved 
-      ? `Votre demande de ${leaveTypeLabels[requestType as keyof typeof leaveTypeLabels]} a été approuvée par l'administration.`
-      : `Votre demande de ${leaveTypeLabels[requestType as keyof typeof leaveTypeLabels]} a été refusée par l'administration.`;
-    
-    // Show toast notification to admin confirming the action
-    toast({
-      title: "Action effectuée",
-      description: `${employeeName} sera notifié(e) de la décision.`,
-      variant: isApproved ? "default" : "destructive",
-    });
-  };
-
-  const handleApprove = (requestId: string) => {
-    if (!isAdmin) {
-      toast({
-        title: "Accès refusé",
-        description: "Seuls les administrateurs peuvent approuver les demandes.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const request = requests.find(req => req.id === requestId);
-    if (!request) return;
-
-    setRequests(prev => prev.map(req => 
-      req.id === requestId ? { ...req, status: 'approved' as const, approvedBy: user.name } : req
-    ));
-
-    createNotificationForEmployee(request.employee.name, 'approved', request.type);
-  };
-
-  const handleReject = (requestId: string) => {
-    if (!isAdmin) {
-      toast({
-        title: "Accès refusé",
-        description: "Seuls les administrateurs peuvent refuser les demandes.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const request = requests.find(req => req.id === requestId);
-    if (!request) return;
-
-    setRequests(prev => prev.map(req => 
-      req.id === requestId ? { ...req, status: 'rejected' as const } : req
-    ));
-
-    createNotificationForEmployee(request.employee.name, 'rejected', request.type);
-  };
 
   const getStatusBadge = (status: string) => {
     const variants = {
@@ -101,8 +221,10 @@ export function RequestsList() {
     );
   };
 
-  const calculateDuration = (startDate: Date, endDate: Date) => {
-    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+  const calculateDuration = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return diffDays;
   };
@@ -118,6 +240,17 @@ export function RequestsList() {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-lg">Chargement des demandes...</div>
+      </div>
+    );
+  }
+
+  // Obtenir les départements uniques
+  const departments = ['Tous les départements', ...Array.from(new Set(requests.map(req => req.profiles?.department).filter(Boolean)))];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -126,6 +259,9 @@ export function RequestsList() {
           {filteredRequests.length} demande(s) trouvée(s)
         </div>
       </div>
+
+      {/* Export Component */}
+      <DataExport />
 
       {/* Filters */}
       <Card>
@@ -164,8 +300,10 @@ export function RequestsList() {
                 <SelectValue placeholder="Filtrer par département" />
               </SelectTrigger>
               <SelectContent>
-                {departmentOptions.map(dept => (
-                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                {departments.map(dept => (
+                  <SelectItem key={dept} value={dept === 'Tous les départements' ? 'all' : dept}>
+                    {dept}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -198,11 +336,11 @@ export function RequestsList() {
                   <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="p-3">
                       <div>
-                        <p className="font-medium">{request.employee.name}</p>
-                        <p className="text-sm text-gray-500">{request.employee.position}</p>
+                        <p className="font-medium">{request.profiles?.name}</p>
+                        <p className="text-sm text-gray-500">{request.profiles?.position}</p>
                       </div>
                     </td>
-                    <td className="p-3 text-sm text-gray-600">{request.employee.department}</td>
+                    <td className="p-3 text-sm text-gray-600">{request.profiles?.department}</td>
                     <td className="p-3">
                       <span className="text-sm">
                         {leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]}
@@ -210,22 +348,22 @@ export function RequestsList() {
                     </td>
                     <td className="p-3 text-sm">
                       <div>
-                        <p>{request.startDate.toLocaleDateString('fr-FR')}</p>
-                        <p className="text-gray-500">au {request.endDate.toLocaleDateString('fr-FR')}</p>
+                        <p>{new Date(request.start_date).toLocaleDateString('fr-FR')}</p>
+                        <p className="text-gray-500">au {new Date(request.end_date).toLocaleDateString('fr-FR')}</p>
                       </div>
                     </td>
                     <td className="p-3 text-sm">
-                      {calculateDuration(request.startDate, request.endDate)} jour(s)
+                      {calculateDuration(request.start_date, request.end_date)} jour(s)
                     </td>
                     <td className="p-3">
                       {getStatusBadge(request.status)}
                     </td>
                     <td className="p-3 text-sm text-gray-500">
-                      {request.submittedAt.toLocaleDateString('fr-FR')}
+                      {new Date(request.created_at).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="p-3">
                       <div className="flex gap-2">
-                        {request.status === 'pending' && isAdmin && (
+                        {request.status === 'pending' && (
                           <>
                             <Button
                               size="sm"

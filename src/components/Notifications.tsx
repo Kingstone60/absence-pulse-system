@@ -1,31 +1,19 @@
 
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Bell, Check, Trash2, Settings } from 'lucide-react';
-import { mockNotifications } from '@/utils/mockData';
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 
 export function Notifications() {
-  const [notifications, setNotifications] = useState(mockNotifications);
-
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notificationId ? { ...notif, read: true } : notif
-      )
-    );
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
-  };
-
-  const deleteNotification = (notificationId: string) => {
-    setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
-  };
-
-  const unreadCount = notifications.filter(notif => !notif.read).length;
+  const { 
+    notifications, 
+    isLoading, 
+    markAsRead, 
+    markAllAsRead, 
+    deleteNotification, 
+    unreadCount 
+  } = useRealtimeNotifications();
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -51,6 +39,14 @@ export function Notifications() {
     };
     return colors[type as keyof typeof colors] || colors.request;
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-lg">Chargement des notifications...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -87,72 +83,70 @@ export function Notifications() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {notifications
-            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-            .map((notification) => (
-              <Card 
-                key={notification.id} 
-                className={`transition-all hover:shadow-md ${
-                  !notification.read ? 'bg-blue-50 border-blue-200' : ''
-                }`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="text-2xl">
-                        {getNotificationIcon(notification.type)}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className={`font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
-                            {notification.title}
-                          </h3>
-                          <Badge className={getNotificationColor(notification.type)}>
-                            {notification.type === 'request' ? 'Demande' :
-                             notification.type === 'approval' ? 'Approbation' :
-                             notification.type === 'rejection' ? 'Refus' :
-                             'Rappel'}
-                          </Badge>
-                          {!notification.read && (
-                            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                          )}
-                        </div>
-                        <p className="text-gray-600 mb-2">{notification.message}</p>
-                        <p className="text-sm text-gray-500">
-                          {notification.timestamp.toLocaleDateString('fr-FR', {
-                            day: 'numeric',
-                            month: 'long',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
+          {notifications.map((notification) => (
+            <Card 
+              key={notification.id} 
+              className={`transition-all hover:shadow-md ${
+                !notification.read ? 'bg-blue-50 border-blue-200' : ''
+              }`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="text-2xl">
+                      {getNotificationIcon(notification.type)}
                     </div>
-                    
-                    <div className="flex gap-2 ml-4">
-                      {!notification.read && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => markAsRead(notification.id)}
-                        >
-                          <Check size={14} />
-                        </Button>
-                      )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={`font-medium ${!notification.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {notification.title}
+                        </h3>
+                        <Badge className={getNotificationColor(notification.type)}>
+                          {notification.type === 'request' ? 'Demande' :
+                           notification.type === 'approval' ? 'Approbation' :
+                           notification.type === 'rejection' ? 'Refus' :
+                           'Rappel'}
+                        </Badge>
+                        {!notification.read && (
+                          <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                        )}
+                      </div>
+                      <p className="text-gray-600 mb-2">{notification.message}</p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(notification.created_at).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 ml-4">
+                    {!notification.read && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => deleteNotification(notification.id)}
-                        className="text-red-600 hover:bg-red-50 border-red-300"
+                        onClick={() => markAsRead(notification.id)}
                       >
-                        <Trash2 size={14} />
+                        <Check size={14} />
                       </Button>
-                    </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deleteNotification(notification.id)}
+                      className="text-red-600 hover:bg-red-50 border-red-300"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
