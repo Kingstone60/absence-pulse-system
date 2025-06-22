@@ -20,6 +20,19 @@ interface AbsentEmployee extends Employee {
   end_date: string;
 }
 
+interface LeaveRequestWithProfile {
+  user_id: string;
+  type: string;
+  start_date: string;
+  end_date: string;
+  profiles: {
+    name: string;
+    position: string;
+    department: string;
+    avatar_url?: string;
+  } | null;
+}
+
 const leaveTypeLabels = {
   annual: 'Congés annuels',
   sick: 'Congé maladie',
@@ -81,7 +94,7 @@ export function PresenceManager() {
           type,
           start_date,
           end_date,
-          profiles:user_id (name, position, department, avatar_url)
+          profiles!fk_leave_requests_user_id (name, position, department, avatar_url)
         `)
         .eq('status', 'approved')
         .lte('start_date', today)
@@ -89,21 +102,23 @@ export function PresenceManager() {
 
       if (leavesError) throw leavesError;
 
-      // Formater les employés absents
-      const absent = currentLeaves.map(leave => ({
-        id: leave.user_id,
-        name: leave.profiles?.name || 'N/A',
-        position: leave.profiles?.position || 'N/A',
-        department: leave.profiles?.department || 'N/A',
-        avatar_url: leave.profiles?.avatar_url,
-        leave_type: leave.type,
-        start_date: leave.start_date,
-        end_date: leave.end_date
-      })) as AbsentEmployee[];
+      // Formater les employés absents avec type assertion sûre
+      const absent = (currentLeaves as LeaveRequestWithProfile[])
+        .filter(leave => leave.profiles !== null)
+        .map(leave => ({
+          id: leave.user_id,
+          name: leave.profiles!.name,
+          position: leave.profiles!.position,
+          department: leave.profiles!.department,
+          avatar_url: leave.profiles!.avatar_url,
+          leave_type: leave.type,
+          start_date: leave.start_date,
+          end_date: leave.end_date
+        })) as AbsentEmployee[];
 
       // Filtrer les employés présents (ceux qui ne sont pas en congé)
       const absentIds = new Set(absent.map(emp => emp.id));
-      const present = allEmployees.filter(emp => !absentIds.has(emp.id));
+      const present = (allEmployees || []).filter(emp => !absentIds.has(emp.id));
 
       setPresentEmployees(present);
       setAbsentEmployees(absent);

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,7 +88,7 @@ export function RequestsList() {
         .from('leave_requests')
         .select(`
           *,
-          profiles:user_id (name, position, department)
+          profiles!fk_leave_requests_user_id (name, position, department)
         `)
         .order('created_at', { ascending: false });
 
@@ -154,7 +155,7 @@ export function RequestsList() {
 
       toast({
         title: "Demande approuvée",
-        description: `La demande de ${request.profiles?.name} a été approuvée.`,
+        description: `La demande de ${request.profiles?.name || 'l\'employé'} a été approuvée.`,
       });
 
     } catch (error) {
@@ -191,7 +192,7 @@ export function RequestsList() {
 
       toast({
         title: "Demande refusée",
-        description: `La demande de ${request.profiles?.name} a été refusée.`,
+        description: `La demande de ${request.profiles?.name || 'l\'employé'} a été refusée.`,
       });
 
     } catch (error) {
