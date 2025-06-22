@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export interface RealtimeNotification {
   id: string;
-  type: 'request' | 'approval' | 'rejection' | 'reminder';
+  type: string; // Changé pour accepter tous les types de string
   title: string;
   message: string;
   read: boolean;
@@ -31,7 +31,7 @@ export function useRealtimeNotifications() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        setNotifications(data);
+        setNotifications(data as RealtimeNotification[]);
       }
       setIsLoading(false);
     };

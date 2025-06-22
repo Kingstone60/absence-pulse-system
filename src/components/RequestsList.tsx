@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DataExport } from './DataExport';
 
-interface LeaveRequest {
+interface SupabaseLeaveRequest {
   id: string;
   user_id: string;
   type: string;
@@ -26,7 +26,7 @@ interface LeaveRequest {
     name: string;
     position: string;
     department: string;
-  };
+  } | null;
 }
 
 const leaveTypeLabels = {
@@ -49,7 +49,7 @@ export function RequestsList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<SupabaseLeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -93,7 +93,7 @@ export function RequestsList() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRequests(data || []);
+      setRequests((data || []) as SupabaseLeaveRequest[]);
     } catch (error) {
       console.error('Error fetching requests:', error);
       toast({
@@ -146,7 +146,7 @@ export function RequestsList() {
 
       toast({
         title: "Demande approuvée",
-        description: `La demande de ${request.profiles.name} a été approuvée.`,
+        description: `La demande de ${request.profiles?.name} a été approuvée.`,
       });
 
     } catch (error) {
@@ -183,7 +183,7 @@ export function RequestsList() {
 
       toast({
         title: "Demande refusée",
-        description: `La demande de ${request.profiles.name} a été refusée.`,
+        description: `La demande de ${request.profiles?.name} a été refusée.`,
       });
 
     } catch (error) {
@@ -336,14 +336,14 @@ export function RequestsList() {
                   <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="p-3">
                       <div>
-                        <p className="font-medium">{request.profiles?.name}</p>
-                        <p className="text-sm text-gray-500">{request.profiles?.position}</p>
+                        <p className="font-medium">{request.profiles?.name || 'N/A'}</p>
+                        <p className="text-sm text-gray-500">{request.profiles?.position || 'N/A'}</p>
                       </div>
                     </td>
-                    <td className="p-3 text-sm text-gray-600">{request.profiles?.department}</td>
+                    <td className="p-3 text-sm text-gray-600">{request.profiles?.department || 'N/A'}</td>
                     <td className="p-3">
                       <span className="text-sm">
-                        {leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]}
+                        {leaveTypeLabels[request.type as keyof typeof leaveTypeLabels] || request.type}
                       </span>
                     </td>
                     <td className="p-3 text-sm">

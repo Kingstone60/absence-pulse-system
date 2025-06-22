@@ -17,6 +17,7 @@ interface UserProfile {
   department: string;
   role: string;
   avatar_url?: string;
+  created_at: string;
 }
 
 const Profile = () => {
@@ -230,7 +231,7 @@ const Profile = () => {
             <div>
               <Label>Membre depuis</Label>
               <div className="p-2 bg-gray-50 rounded border text-gray-600">
-                {new Date(user?.created_at || '').toLocaleDateString('fr-FR')}
+                {new Date(profile.created_at).toLocaleDateString('fr-FR')}
               </div>
             </div>
           </div>
