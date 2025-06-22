@@ -7,6 +7,7 @@ import { RequestForm } from '@/components/RequestForm';
 import { RequestsList } from '@/components/RequestsList';
 import { AbsenceTable } from '@/components/AbsenceTable';
 import { Notifications } from '@/components/Notifications';
+import { PresenceManager } from '@/components/PresenceManager';
 import Profile from './Profile';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -31,6 +32,9 @@ const Index = () => {
         return <RequestForm />;
       case 'profile':
         return <Profile />;
+      case 'presence':
+        // Only admins can access presence management
+        return user?.role === 'admin' ? <PresenceManager /> : <Dashboard />;
       case 'settings':
         // Only admins can access settings
         return user?.role === 'admin' ? <div>Paramètres (à implémenter)</div> : <Dashboard />;
@@ -66,6 +70,14 @@ const Index = () => {
                 >
                   Absences actuelles
                 </button>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => setActiveTab('presence')}
+                    className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Gestion présences
+                  </button>
+                )}
               </div>
               <div className="text-sm text-gray-500">
                 Bienvenue {user?.name} - {user?.role === 'admin' ? 'Administrateur' : 'Employé'}

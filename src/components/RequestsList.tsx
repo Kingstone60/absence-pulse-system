@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,7 +92,16 @@ export function RequestsList() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRequests((data || []) as SupabaseLeaveRequest[]);
+      
+      // Type assertion sûre - on sait que la structure correspond
+      const typedData = (data || []).map(item => ({
+        ...item,
+        profiles: item.profiles && typeof item.profiles === 'object' && 'name' in item.profiles
+          ? item.profiles as { name: string; position: string; department: string }
+          : null
+      })) as SupabaseLeaveRequest[];
+      
+      setRequests(typedData);
     } catch (error) {
       console.error('Error fetching requests:', error);
       toast({

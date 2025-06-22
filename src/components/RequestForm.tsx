@@ -13,18 +13,62 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { leaveTypeLabels } from '@/utils/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export function RequestForm() {
   const [leaveType, setLeaveType] = useState('');
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [reason, setReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const { user } = useAuth();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Demande soumise:', { leaveType, startDate, endDate, reason });
-    // Here you would typically send the data to your backend
-    alert('Demande de congé soumise avec succès !');
+    
+    if (!user || !startDate || !endDate || !leaveType) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .insert({
+          user_id: user.id,
+          type: leaveType,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+          reason: reason || null,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Demande soumise",
+        description: "Votre demande a été soumise avec succès !",
+      });
+
+      // Réinitialiser le formulaire
+      setLeaveType('');
+      setStartDate(undefined);
+      setEndDate(undefined);
+      setReason('');
+      
+    } catch (error) {
+      console.error('Error submitting request:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de soumettre la demande.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const calculateDays = () => {
@@ -133,8 +177,12 @@ export function RequestForm() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full" disabled={!leaveType || !startDate || !endDate}>
-                  Soumettre la demande
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={!leaveType || !startDate || !endDate || isSubmitting}
+                >
+                  {isSubmitting ? 'Soumission...' : 'Soumettre la demande'}
                 </Button>
               </form>
             </CardContent>
