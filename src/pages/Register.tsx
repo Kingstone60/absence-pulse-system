@@ -1,40 +1,29 @@
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { UserPlus } from 'lucide-react';
-
-const departments = [
-  'Développement',
-  'Marketing',
-  'RH',
-  'Finance',
-  'Commercial',
-  'Support',
-  'Design'
-];
+import { supabase } from '@/integrations/supabase/client';
 
 const Register = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    position: '',
-    department: ''
+    position: ''
   });
-  const { register, isLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email || !formData.password || !formData.position || !formData.department) {
+    if (!formData.name || !formData.email || !formData.password || !formData.position) {
       toast({
         title: "Erreur",
         description: "Veuillez remplir tous les champs",
@@ -43,19 +32,44 @@ const Register = () => {
       return;
     }
 
-    const success = await register(formData);
-    
-    if (!success) {
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name,
+            position: formData.position,
+            department: 'General', // Valeur par défaut
+            role: 'employee'
+          },
+          emailRedirectTo: `${window.location.origin}/`
+        }
+      });
+
+      if (error) {
+        toast({
+          title: "Erreur d'inscription",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Inscription réussie",
+          description: "Votre compte a été créé avec succès !"
+        });
+        navigate('/');
+      }
+    } catch (error) {
       toast({
-        title: "Erreur d'inscription",
-        description: "Un compte avec cet email existe déjà",
+        title: "Erreur",
+        description: "Une erreur inattendue s'est produite",
         variant: "destructive"
       });
-    } else {
-      toast({
-        title: "Inscription réussie",
-        description: "Votre compte a été créé avec succès !"
-      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -126,20 +140,6 @@ const Register = () => {
                   placeholder="Développeur Senior"
                   required
                 />
-              </div>
-
-              <div>
-                <Label htmlFor="department">Département</Label>
-                <Select value={formData.department} onValueChange={(value) => handleInputChange('department', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un département" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map(dept => (
-                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               <Button 
