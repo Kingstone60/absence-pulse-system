@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, UserCheck, UserX } from 'lucide-react';
+import { Users, UserCheck, UserX, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -46,10 +46,16 @@ export function PresenceManager() {
   const [presentEmployees, setPresentEmployees] = useState<Employee[]>([]);
   const [absentEmployees, setAbsentEmployees] = useState<AbsentEmployee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
+  const isAdmin = user?.role === 'admin';
+
   useEffect(() => {
-    if (user?.role !== 'admin') return;
+    if (!isAdmin) {
+      setIsLoading(false);
+      return;
+    }
 
     fetchPresenceData();
 
@@ -64,6 +70,7 @@ export function PresenceManager() {
           table: 'leave_requests'
         },
         () => {
+          console.log('Mise à jour détectée, rechargement des données...');
           fetchPresenceData();
         }
       )
@@ -72,21 +79,47 @@ export function PresenceManager() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [isAdmin]);
 
   const fetchPresenceData = async () => {
     try {
+      setError(null);
+      console.log('Chargement des données de présence...');
       const today = new Date().toISOString().split('T')[0];
+      console.log('Date du jour:', today);
 
-      // Récupérer tous les employés
+      // Vérifier d'abord si l'utilisateur connecté est admin
+      const { data: currentUserProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id)
+        .single();
+
+      if (profileError) {
+        console.error('Erreur lors de la vérification du profil:', profileError);
+        throw new Error('Impossible de vérifier vos permissions.');
+      }
+
+      if (currentUserProfile?.role !== 'admin') {
+        throw new Error('Vous devez être administrateur pour accéder à cette fonctionnalité.');
+      }
+
+      // Récupérer tous les employés (non-admin)
+      console.log('Récupération de tous les employés...');
       const { data: allEmployees, error: employeesError } = await supabase
         .from('profiles')
         .select('id, name, position, department, avatar_url')
         .neq('role', 'admin');
 
-      if (employeesError) throw employeesError;
+      if (employeesError) {
+        console.error('Erreur employés:', employeesError);
+        throw employeesError;
+      }
+
+      console.log('Employés trouvés:', allEmployees?.length || 0);
 
       // Récupérer les employés actuellement en congé
+      console.log('Récupération des congés en cours...');
       const { data: currentLeaves, error: leavesError } = await supabase
         .from('leave_requests')
         .select(`
@@ -100,7 +133,12 @@ export function PresenceManager() {
         .lte('start_date', today)
         .gte('end_date', today);
 
-      if (leavesError) throw leavesError;
+      if (leavesError) {
+        console.error('Erreur congés:', leavesError);
+        throw leavesError;
+      }
+
+      console.log('Congés en cours trouvés:', currentLeaves?.length || 0);
 
       // Formater les employés absents avec type assertion sûre
       const absent = (currentLeaves as LeaveRequestWithProfile[])
@@ -120,16 +158,20 @@ export function PresenceManager() {
       const absentIds = new Set(absent.map(emp => emp.id));
       const present = (allEmployees || []).filter(emp => !absentIds.has(emp.id));
 
+      console.log('Employés présents:', present.length);
+      console.log('Employés absents:', absent.length);
+
       setPresentEmployees(present);
       setAbsentEmployees(absent);
     } catch (error) {
-      console.error('Error fetching presence data:', error);
+      console.error('Erreur lors du chargement des données de présence:', error);
+      setError(error instanceof Error ? error.message : 'Une erreur est survenue');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (user?.role !== 'admin') {
+  if (!isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -144,6 +186,34 @@ export function PresenceManager() {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-lg">Chargement des données de présence...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Gestion des présences</h1>
+        </div>
+        
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-red-800">
+              <AlertCircle size={24} />
+              <div>
+                <h3 className="font-semibold">Erreur de chargement</h3>
+                <p className="text-sm">{error}</p>
+                <button 
+                  onClick={fetchPresenceData}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Réessayer
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
