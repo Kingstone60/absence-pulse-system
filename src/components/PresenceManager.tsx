@@ -342,7 +342,7 @@ export function PresenceManager() {
               )}
             </div>
           </CardContent>
-        </div>
+        </Card>
       </div>
     </div>
   );
