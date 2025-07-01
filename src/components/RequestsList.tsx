@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Search, Filter, Check, X, Eye, Download } from 'lucide-react';
+import { Search, Filter, Check, X, Eye, RefreshCw, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,13 +51,18 @@ export function RequestsList() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [requests, setRequests] = useState<SupabaseLeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      setIsLoading(false);
+      return;
+    }
 
     fetchRequests();
 
@@ -72,6 +77,7 @@ export function RequestsList() {
           table: 'leave_requests'
         },
         () => {
+          console.log('Nouvelle mise à jour détectée dans leave_requests');
           fetchRequests();
         }
       )
@@ -84,6 +90,9 @@ export function RequestsList() {
 
   const fetchRequests = async () => {
     try {
+      setError(null);
+      console.log('Chargement des demandes de congé...');
+      
       const { data, error } = await supabase
         .from('leave_requests')
         .select(`
@@ -92,9 +101,14 @@ export function RequestsList() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur lors du chargement des demandes:', error);
+        throw new Error(`Impossible de charger les demandes: ${error.message}`);
+      }
       
-      // Type assertion sûre - on sait que la structure correspond
+      console.log('Demandes chargées:', data?.length || 0);
+      
+      // Type assertion sûre
       const typedData = (data || []).map(item => ({
         ...item,
         profiles: item.profiles && typeof item.profiles === 'object' && 'name' in item.profiles
@@ -105,9 +119,11 @@ export function RequestsList() {
       setRequests(typedData);
     } catch (error) {
       console.error('Error fetching requests:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Impossible de charger les demandes.';
+      setError(errorMessage);
       toast({
         title: "Erreur",
-        description: "Impossible de charger les demandes.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -117,77 +133,105 @@ export function RequestsList() {
 
   const createNotification = async (userId: string, type: string, title: string, message: string) => {
     try {
+      console.log('Création de notification pour:', userId, type, title);
       await supabase.rpc('create_notification', {
         target_user_id: userId,
         notification_type: type,
         notification_title: title,
         notification_message: message
       });
+      console.log('Notification créée avec succès');
     } catch (error) {
       console.error('Error creating notification:', error);
     }
   };
 
   const handleApprove = async (requestId: string) => {
-    if (!isAdmin) return;
+    if (!isAdmin || processingRequest) return;
 
     try {
+      setProcessingRequest(requestId);
       const request = requests.find(req => req.id === requestId);
-      if (!request) return;
+      if (!request) {
+        throw new Error('Demande introuvable');
+      }
+
+      console.log('Approbation de la demande:', requestId);
 
       const { error } = await supabase
         .from('leave_requests')
         .update({ 
           status: 'approved',
-          approved_by: user.id
+          approved_by: user.id,
+          admin_comment: 'Demande approuvée par l\'administrateur'
         })
         .eq('id', requestId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur lors de l\'approbation:', error);
+        throw new Error(`Erreur lors de l'approbation: ${error.message}`);
+      }
 
       // Créer une notification
       await createNotification(
         request.user_id,
         'approval',
         'Demande approuvée',
-        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} a été approuvée.`
+        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} du ${new Date(request.start_date).toLocaleDateString('fr-FR')} au ${new Date(request.end_date).toLocaleDateString('fr-FR')} a été approuvée.`
       );
 
       toast({
         title: "Demande approuvée",
-        description: `La demande de ${request.profiles?.name || 'l\'employé'} a été approuvée.`,
+        description: `La demande de ${request.profiles?.name || 'l\'employé'} a été approuvée avec succès.`,
       });
+
+      // Actualiser les données
+      await fetchRequests();
 
     } catch (error) {
       console.error('Error approving request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Impossible d\'approuver la demande.';
       toast({
         title: "Erreur",
-        description: "Impossible d'approuver la demande.",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
   const handleReject = async (requestId: string) => {
-    if (!isAdmin) return;
+    if (!isAdmin || processingRequest) return;
 
     try {
+      setProcessingRequest(requestId);
       const request = requests.find(req => req.id === requestId);
-      if (!request) return;
+      if (!request) {
+        throw new Error('Demande introuvable');
+      }
+
+      console.log('Rejet de la demande:', requestId);
 
       const { error } = await supabase
         .from('leave_requests')
-        .update({ status: 'rejected' })
+        .update({ 
+          status: 'rejected',
+          admin_comment: 'Demande refusée par l\'administrateur'
+        })
         .eq('id', requestId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur lors du rejet:', error);
+        throw new Error(`Erreur lors du rejet: ${error.message}`);
+      }
 
       // Créer une notification
       await createNotification(
         request.user_id,
         'rejection',
         'Demande refusée',
-        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} a été refusée.`
+        `Votre demande de ${leaveTypeLabels[request.type as keyof typeof leaveTypeLabels]} du ${new Date(request.start_date).toLocaleDateString('fr-FR')} au ${new Date(request.end_date).toLocaleDateString('fr-FR')} a été refusée.`
       );
 
       toast({
@@ -195,13 +239,19 @@ export function RequestsList() {
         description: `La demande de ${request.profiles?.name || 'l\'employé'} a été refusée.`,
       });
 
+      // Actualiser les données
+      await fetchRequests();
+
     } catch (error) {
       console.error('Error rejecting request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Impossible de refuser la demande.';
       toast({
         title: "Erreur",
-        description: "Impossible de refuser la demande.",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
@@ -252,7 +302,40 @@ export function RequestsList() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-lg">Chargement des demandes...</div>
+        <div className="flex items-center gap-2 text-lg">
+          <RefreshCw className="animate-spin" size={20} />
+          Chargement des demandes...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Gestion des demandes</h1>
+        </div>
+        
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-red-800">
+              <AlertCircle size={24} />
+              <div>
+                <h3 className="font-semibold">Erreur de chargement</h3>
+                <p className="text-sm">{error}</p>
+                <Button 
+                  onClick={fetchRequests}
+                  className="mt-2 bg-red-600 text-white hover:bg-red-700"
+                  size="sm"
+                >
+                  <RefreshCw size={16} className="mr-2" />
+                  Réessayer
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -264,8 +347,14 @@ export function RequestsList() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Gestion des demandes</h1>
-        <div className="text-sm text-gray-500">
-          {filteredRequests.length} demande(s) trouvée(s)
+        <div className="flex items-center gap-4">
+          <Button onClick={fetchRequests} variant="outline" size="sm">
+            <RefreshCw size={16} className="mr-2" />
+            Actualiser
+          </Button>
+          <div className="text-sm text-gray-500">
+            {filteredRequests.length} demande(s) trouvée(s)
+          </div>
         </div>
       </div>
 
@@ -380,8 +469,13 @@ export function RequestsList() {
                               onClick={() => handleApprove(request.id)}
                               className="text-green-600 border-green-300 hover:bg-green-50"
                               title="Approuver la demande"
+                              disabled={processingRequest === request.id}
                             >
-                              <Check size={14} />
+                              {processingRequest === request.id ? (
+                                <RefreshCw className="animate-spin" size={14} />
+                              ) : (
+                                <Check size={14} />
+                              )}
                             </Button>
                             <Button
                               size="sm"
@@ -389,8 +483,13 @@ export function RequestsList() {
                               onClick={() => handleReject(request.id)}
                               className="text-red-600 border-red-300 hover:bg-red-50"
                               title="Refuser la demande"
+                              disabled={processingRequest === request.id}
                             >
-                              <X size={14} />
+                              {processingRequest === request.id ? (
+                                <RefreshCw className="animate-spin" size={14} />
+                              ) : (
+                                <X size={14} />
+                              )}
                             </Button>
                           </>
                         )}
@@ -403,6 +502,11 @@ export function RequestsList() {
                 ))}
               </tbody>
             </table>
+            {filteredRequests.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                Aucune demande trouvée
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

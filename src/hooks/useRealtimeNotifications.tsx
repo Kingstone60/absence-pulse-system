@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 export interface RealtimeNotification {
   id: string;
-  type: string; // Changé pour accepter tous les types de string
+  type: string;
   title: string;
   message: string;
   read: boolean;
@@ -17,23 +18,42 @@ export interface RealtimeNotification {
 export function useRealtimeNotifications() {
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
 
     // Charger les notifications existantes
     const fetchNotifications = async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      try {
+        setError(null);
+        console.log('Chargement des notifications pour:', user.id);
+        
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setNotifications(data as RealtimeNotification[]);
+        if (error) {
+          console.error('Erreur lors du chargement des notifications:', error);
+          throw new Error(`Impossible de charger les notifications: ${error.message}`);
+        }
+
+        console.log('Notifications chargées:', data?.length || 0);
+        setNotifications(data as RealtimeNotification[] || []);
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Impossible de charger les notifications.';
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     fetchNotifications();
@@ -50,7 +70,16 @@ export function useRealtimeNotifications() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          setNotifications(prev => [payload.new as RealtimeNotification, ...prev]);
+          console.log('Nouvelle notification reçue:', payload.new);
+          const newNotification = payload.new as RealtimeNotification;
+          setNotifications(prev => [newNotification, ...prev]);
+          
+          // Afficher une toast pour les nouvelles notifications
+          toast({
+            title: newNotification.title,
+            description: newNotification.message,
+            duration: 5000,
+          });
         }
       )
       .on(
@@ -62,6 +91,7 @@ export function useRealtimeNotifications() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
+          console.log('Notification mise à jour:', payload.new);
           setNotifications(prev => 
             prev.map(notif => 
               notif.id === payload.new.id ? payload.new as RealtimeNotification : notif
@@ -74,53 +104,100 @@ export function useRealtimeNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, toast]);
 
   const markAsRead = async (notificationId: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', notificationId);
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId);
 
-    if (!error) {
+      if (error) {
+        console.error('Erreur lors du marquage comme lu:', error);
+        throw new Error(`Impossible de marquer comme lu: ${error.message}`);
+      }
+
       setNotifications(prev =>
         prev.map(notif =>
           notif.id === notificationId ? { ...notif, read: true } : notif
         )
       );
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : 'Impossible de marquer la notification comme lue.',
+        variant: "destructive",
+      });
     }
   };
 
   const markAllAsRead = async () => {
     if (!user) return;
 
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', user.id)
-      .eq('read', false);
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
 
-    if (!error) {
+      if (error) {
+        console.error('Erreur lors du marquage de toutes les notifications:', error);
+        throw new Error(`Impossible de marquer toutes les notifications: ${error.message}`);
+      }
+
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       );
+
+      toast({
+        title: "Succès",
+        description: "Toutes les notifications ont été marquées comme lues.",
+      });
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : 'Impossible de marquer toutes les notifications.',
+        variant: "destructive",
+      });
     }
   };
 
   const deleteNotification = async (notificationId: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', notificationId);
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId);
 
-    if (!error) {
+      if (error) {
+        console.error('Erreur lors de la suppression:', error);
+        throw new Error(`Impossible de supprimer: ${error.message}`);
+      }
+
       setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
+      
+      toast({
+        title: "Notification supprimée",
+        description: "La notification a été supprimée avec succès.",
+      });
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : 'Impossible de supprimer la notification.',
+        variant: "destructive",
+      });
     }
   };
 
   return {
     notifications,
     isLoading,
+    error,
     markAsRead,
     markAllAsRead,
     deleteNotification,

@@ -8,6 +8,7 @@ import { RequestsList } from '@/components/RequestsList';
 import { AbsenceTable } from '@/components/AbsenceTable';
 import { Notifications } from '@/components/Notifications';
 import { PresenceManager } from '@/components/PresenceManager';
+import { EmployeeRequestsStatus } from '@/components/EmployeeRequestsStatus';
 import Profile from './Profile';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -18,7 +19,13 @@ const Index = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard />;
+        return (
+          <div className="space-y-6">
+            <Dashboard />
+            {/* Afficher les demandes de l'employé s'il n'est pas admin */}
+            {user?.role !== 'admin' && <EmployeeRequestsStatus />}
+          </div>
+        );
       case 'calendar':
         return <LeaveCalendar />;
       case 'requests':

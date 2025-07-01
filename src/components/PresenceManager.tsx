@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, UserCheck, UserX, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Users, UserCheck, UserX, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Employee {
   id: string;
@@ -48,6 +50,7 @@ export function PresenceManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const isAdmin = user?.role === 'admin';
 
@@ -84,11 +87,13 @@ export function PresenceManager() {
   const fetchPresenceData = async () => {
     try {
       setError(null);
+      setIsLoading(true);
       console.log('Chargement des données de présence...');
+      
       const today = new Date().toISOString().split('T')[0];
       console.log('Date du jour:', today);
 
-      // Récupérer tous les employés (non-admin) - sans vérification UUID
+      // Récupérer tous les employés (non-admin)
       console.log('Récupération de tous les employés...');
       const { data: allEmployees, error: employeesError } = await supabase
         .from('profiles')
@@ -97,7 +102,7 @@ export function PresenceManager() {
 
       if (employeesError) {
         console.error('Erreur employés:', employeesError);
-        throw new Error('Impossible de charger la liste des employés.');
+        throw new Error(`Impossible de charger la liste des employés: ${employeesError.message}`);
       }
 
       console.log('Employés trouvés:', allEmployees?.length || 0);
@@ -119,13 +124,13 @@ export function PresenceManager() {
 
       if (leavesError) {
         console.error('Erreur congés:', leavesError);
-        // Si erreur de congés, on continue avec les employés seulement
+        // Continuer même en cas d'erreur pour les congés
         console.log('Impossible de charger les congés, affichage des employés seulement');
       }
 
       console.log('Congés en cours trouvés:', currentLeaves?.length || 0);
 
-      // Formater les employés absents avec type assertion sûre
+      // Formater les employés absents
       const absent = currentLeaves ? (currentLeaves as LeaveRequestWithProfile[])
         .filter(leave => leave.profiles !== null)
         .map(leave => ({
@@ -139,7 +144,7 @@ export function PresenceManager() {
           end_date: leave.end_date
         })) as AbsentEmployee[] : [];
 
-      // Filtrer les employés présents (ceux qui ne sont pas en congé)
+      // Filtrer les employés présents
       const absentIds = new Set(absent.map(emp => emp.id));
       const present = (allEmployees || []).filter(emp => !absentIds.has(emp.id));
 
@@ -148,9 +153,22 @@ export function PresenceManager() {
 
       setPresentEmployees(present);
       setAbsentEmployees(absent);
+
+      toast({
+        title: "Données mises à jour",
+        description: `${present.length} présents, ${absent.length} absents`,
+      });
+
     } catch (error) {
       console.error('Erreur lors du chargement des données de présence:', error);
-      setError(error instanceof Error ? error.message : 'Une erreur est survenue lors du chargement des données.');
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du chargement des données.';
+      setError(errorMessage);
+      
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -170,7 +188,10 @@ export function PresenceManager() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-lg">Chargement des données de présence...</div>
+        <div className="flex items-center gap-2 text-lg">
+          <RefreshCw className="animate-spin" size={20} />
+          Chargement des données de présence...
+        </div>
       </div>
     );
   }
@@ -189,12 +210,14 @@ export function PresenceManager() {
               <div>
                 <h3 className="font-semibold">Erreur de chargement</h3>
                 <p className="text-sm">{error}</p>
-                <button 
+                <Button 
                   onClick={fetchPresenceData}
-                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                  className="mt-2 bg-red-600 text-white hover:bg-red-700"
+                  size="sm"
                 >
+                  <RefreshCw size={16} className="mr-2" />
                   Réessayer
-                </button>
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -207,8 +230,19 @@ export function PresenceManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Gestion des présences</h1>
-        <div className="text-sm text-gray-500">
-          Mise à jour : {new Date().toLocaleDateString('fr-FR')}
+        <div className="flex items-center gap-4">
+          <Button onClick={fetchPresenceData} variant="outline" size="sm">
+            <RefreshCw size={16} className="mr-2" />
+            Actualiser
+          </Button>
+          <div className="text-sm text-gray-500">
+            Mise à jour : {new Date().toLocaleDateString('fr-FR', { 
+              day: 'numeric', 
+              month: 'long', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}
+          </div>
         </div>
       </div>
 
